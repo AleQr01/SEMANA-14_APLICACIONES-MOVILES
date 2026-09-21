@@ -1,0 +1,11 @@
+Incorporación de Funcionalidades Nativas y Gestión de Permisos (Semana 14)
+Asignatura: Desarrollo Móvil Avanzado
+Estudiante: AleQr01
+Selección y Justificación de Capacidades Nativas
+Para enriquecer la aplicación y mejorar la experiencia de usuario dentro de la gestión de productos y servicios, se seleccionaron dos capacidades nativas del dispositivo
+Cámara (camera / image_picker):Propósito y valor: 
+Permitir al usuario capturar la fotografía de un nuevo producto o comprobante en tiempo real dentro del formulario de creación.
+Clasificación: Opcional. Si se deniega el permiso, la aplicación permite adjuntar imágenes desde el selector de archivos del sistema o guardar el registro sin imagen.
+Geolocalización / Ubicación (geolocator):Propósito y valor: Registrar automáticamente las coordenadas (latitud y longitud) del punto de venta o entrega al crear/editar un registro, garantizando la trazabilidad geográfica.
+Clasificación: Opcional. Si el permiso o el servicio de ubicación no está activo, la aplicación permite ingresar la dirección manualmente o proceder con la ubicación por defecto de la sucursal.2. Vía de Acceso e Inspección de PluginsSe adoptaron plugins oficiales y verificados de pub.dev alineados con los criterios de mantenimiento y compatibilidad:Plugin / CapacidadVersiónCriterio de Selección y Verificaciónpermission_handler^11.3.1Plugin estándar para la verificación y solicitud multiplataforma de estados de permisos de forma unificada.image_picker^1.1.2Ofrece acceso a la cámara nativa y delega la selección de archivos al selector seguro del sistema (evitando solicitar acceso amplio a la galería).geolocator^12.0.0
+Permite gestionar tanto el permiso de ubicación del SO como la verificación previa del estado del servicio GPS del dispositivo.
