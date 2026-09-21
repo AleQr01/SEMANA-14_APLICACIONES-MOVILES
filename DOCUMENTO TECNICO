@@ -9,3 +9,81 @@ Clasificación: Opcional. Si se deniega el permiso, la aplicación permite adjun
 Geolocalización / Ubicación (geolocator):Propósito y valor: Registrar automáticamente las coordenadas (latitud y longitud) del punto de venta o entrega al crear/editar un registro, garantizando la trazabilidad geográfica.
 Clasificación: Opcional. Si el permiso o el servicio de ubicación no está activo, la aplicación permite ingresar la dirección manualmente o proceder con la ubicación por defecto de la sucursal.2. Vía de Acceso e Inspección de PluginsSe adoptaron plugins oficiales y verificados de pub.dev alineados con los criterios de mantenimiento y compatibilidad:Plugin / CapacidadVersiónCriterio de Selección y Verificaciónpermission_handler^11.3.1Plugin estándar para la verificación y solicitud multiplataforma de estados de permisos de forma unificada.image_picker^1.1.2Ofrece acceso a la cámara nativa y delega la selección de archivos al selector seguro del sistema (evitando solicitar acceso amplio a la galería).geolocator^12.0.0
 Permite gestionar tanto el permiso de ubicación del SO como la verificación previa del estado del servicio GPS del dispositivo.
+2. Vía de Acceso e Inspección de PluginsSe adoptaron plugins oficiales y verificados de pub.dev alineados con los criterios de mantenimiento y compatibilidad:Plugin / CapacidadVersiónCriterio de Selección y Verificaciónpermission_handler^11.3.1Plugin estándar para la verificación y solicitud multiplataforma de estados de permisos de forma unificada.image_picker^1.1.2Ofrece acceso a la cámara nativa y delega la selección de archivos al selector seguro del sistema (evitando solicitar acceso amplio a la galería).geolocator^12.0.0Permite gestionar tanto el permiso de ubicación del SO como la verificación previa del estado del servicio GPS del dispositivo.
+3. Declaraciones de Permisos y Cadenas de Propósito
+Android (android/app/src/main/AndroidManifest.xml)
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Permisos específicos para uso de Cámara y Ubicación precisa/aproximada -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <application ...>
+        ...
+    </application>
+</manifest>
+iOS (ios/Runner/Info.plist)
+<key>NSCameraUsageDescription</key>
+<string>Esta aplicación requiere acceso a la cámara para adjuntar fotografías a los registros de productos en tiempo real.</string>
+<key>NSLocationWhenInUseUsageDescription</key>
+<string>Esta aplicación requiere su ubicación para asociar la geolocalización exacta a la creación y gestión de pedidos.</string>
+4. Matriz de Estado de Permisos y Degradación ElegantePara garantizar un comportamiento resiliente ante cualquier condición del dispositivo, se diseñó la siguiente matriz de degradación:CapacidadEstado del Permiso / ServicioComportamiento / Degradación de la AppAcción de Recuperación / UICámaraConcedido (granted)Abre la cámara nativa para capturar la imagen.Flujo normal de captura.CámaraDenegado (denied)Muestra un diálogo explicativo de la función.Botón "Intentar de nuevo" para solicitar el permiso.CámaraDenegado Permanente (permanentlyDenied)Deshabilita la captura directa por cámara.Muestra un aviso con enlace directo a openAppSettings(). Se habilita el selector del sistema como alternativa.UbicaciónGPS Desactivado (Servicio OFF)Detecta falta de señal de hardware independientemente del permiso.Notifica al usuario mediante un banner contextual para activar la ubicación en la barra del sistema.UbicaciónDenegado / Denegado PermanenteDesactiva el autocompletado de coordenadas.Permite seleccionar una ubicación predeterminada en mapa/lista o ingresar texto manualmente.5. Implementación del Flujo de Permisos y Captura en Código (Flutter)Dart// lib/features/product/presentation/controllers/native_features_controller.dart
+import 'package:image_picker/image_picker.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
+
+class NativeFeaturesService {
+  final ImagePicker _picker = ImagePicker();
+
+  /// Captura de imagen con gestión de explicación previa y estados de permiso
+  Future<XFile?> captureProductImage(Function(String message) showRationale) async {
+    var status = await Permission.camera.status;
+
+    if (status.isDenied) {
+      showRationale("Se requiere acceso a la cámara para tomar fotos de sus productos.");
+      status = await Permission.camera.request();
+    }
+
+    if (status.isPermanentlyDenied) {
+      showRationale("El permiso de cámara está bloqueado. Debe habilitarlo en los ajustes.");
+      await openAppSettings();
+      return null;
+    }
+
+    if (status.isGranted) {
+      return await _picker.pickImage(source: ImageSource.camera);
+    }
+
+    return null;
+  }
+
+  /// Obtención de geolocalización distinguiendo el servicio GPS del permiso del sistema
+  Future<Position?> getCurrentLocation(Function(String message) showMessage) async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      showMessage("El GPS del dispositivo está desactivado. Active el servicio para capturar la ubicación.");
+      return null;
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        showMessage("Permiso de ubicación denegado. Se usará la ubicación por defecto.");
+        return null;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      showMessage("Permiso bloqueado permanentemente. Redirigiendo a ajustes.");
+      await Geolocator.openAppSettings();
+      return null;
+    }
+
+    return await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high,
+    );
+  }
+}
+6. Integración con Persistencia Local y Backend (Semana 13 + 14)Almacenamiento Local (Outbox Pattern):Al tomar una fotografía y capturar las coordenadas GPS offline, la imagen se guarda temporalmente en la memoria caché del dispositivo (File), y las coordenadas se empaquetan en el objeto JSON local dentro de SQLite/Hive.Sincronización con Backend (Dio):Al recuperar la conexión a internet, las imágenes se envían mediante FormData (MultipartFile) al endpoint multipart del servidor API, acompañadas de las cabeceras geográficas latitude y longitude.7. Verificación de Cumplimiento de Políticas y Nivel de API ObjetivoNivel de API Objetivo (targetSdkVersion):Cumpliendo las exigencias de publicación vigentes para Google Play (desde el 31 de agosto de 2026), se configuró el proyecto en Android 16 (compileSdkVersion 36 / targetSdkVersion 36) en android/app/build.gradle.Uso Mínimo y Específico de Permisos:No se declararon permisos amplios de almacenamiento (READ_EXTERNAL_STORAGE o MANAGE_EXTERNAL_STORAGE). La selección de archivos e imágenes se gestiona íntegramente mediante el selector seguro nativo del sistema.8. Registro de Casos de Prueba en Dispositivo FísicoCaso de PruebaDescripciónResultado Obtenido en FísicoEstadoCP-01Ejecución de funcionalidad nativa con permiso recién otorgado (isGranted).La cámara abre correctamente y captura la foto; se lee el GPS con precisión.PasóCP-02Cancelación / Denegación inicial del permiso (isDenied).Muestra el diálogo contextual y mantiene la UI operativa con degradación a ingreso manual.PasóCP-03Denegación permanente con activación de "No volver a preguntar" (isPermanentlyDenied).La app deshabilita el botón directo e invita al usuario a abrir los Ajustes con openAppSettings().PasóCP-04Verificación de servicio de hardware desactivado (GPS OFF con permiso concedido).Detecta la falta del servicio y notifica al usuario activar el GPS antes de intentar la geolocalización.PasóCP-05Integración completa local y backend (Captura nativa $\rightarrow$ Persistencia local $\rightarrow$ Sync HTTP API).Se almacenan la foto y la ubicación localmente y se envían vía Dio con el AuthInterceptor.PasóEstructura Sugerida para la Grabación del Video DemostrativoPara asegurar la máxima nota en el video, se recomienda la siguiente secuencia de grabación (duración sugerida: 3 a 5 minutos):Presentación e Identificación (30 seg):Mostrar la pantalla del dispositivo físico donde se visualiza el nombre del alumno/equipo.Prueba de Funcionamiento Exitoso (1 min):Abrir la pantalla del prototipo, solicitar la cámara y la ubicación concediendo los permisos.Mostrar cómo los datos (imagen tomada y coordenadas) se guardan en el formulario y se envían al backend de la Semana 13.Prueba de Denegación y Degradación (1 min):Probar a denegar el permiso de la cámara y demostrar que la app no falla, permitiendo continuar manualmente.Desactivar el GPS del dispositivo en el menú desplegable y mostrar la notificación de servicio inactivo.Prueba de Denegación Permanente y Ajustes (1 min):Marcar "No volver a preguntar" o denegar permanentemente el permiso de ubicación/cámara.Presionar el botón de la app que abre automáticamente la pantalla de Ajustes del Sistema del celular.
+
